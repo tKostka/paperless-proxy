@@ -4,6 +4,7 @@ FROM ${BUILD_FROM}
 RUN apk add --no-cache \
     bash \
     nginx \
+    nginx-mod-http-headers-more \
     gettext \
     && rm -rf /var/cache/apk/*
 
