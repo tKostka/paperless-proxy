@@ -9,7 +9,7 @@ if [ -z "${PAPERLESS_URL}" ] || [ "${PAPERLESS_URL}" = "null" ]; then
 fi
 
 bashio::log.info "══════════════════════════════════════════════"
-bashio::log.info " Paperless-NGX Proxy v1.2.0"
+bashio::log.info " Paperless-NGX Proxy v1.2.1"
 bashio::log.info " Target: ${PAPERLESS_URL}"
 bashio::log.info " Ingress port: 8099"
 bashio::log.info "══════════════════════════════════════════════"

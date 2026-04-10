@@ -1,5 +1,5 @@
 name: "Paperless-NGX Proxy"
-version: "1.2.0"
+version: "1.2.1"
 slug: "paperless_proxy"
 description: >-
   Reverse Proxy for Paperless-NGX — exposes a self-hosted Paperless-NGX
@@ -19,7 +19,7 @@ panel_icon: "mdi:file-document-multiple"
 panel_title: "Paperless"
 homeassistant_api: false
 hassio_api: false
-host_network: false
+host_network: true
 options:
   paperless_url: ""
 schema:

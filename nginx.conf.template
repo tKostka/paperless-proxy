@@ -1,5 +1,5 @@
 worker_processes 1;
-error_log /proc/1/fd/1 warn;
+error_log /proc/1/fd/1 info;
 pid /var/run/nginx.pid;
 
 events {
@@ -11,9 +11,19 @@ http {
     default_type  application/octet-stream;
     sendfile      on;
 
+    log_format ingress '$remote_addr - $request_uri -> $upstream_addr [$status] '
+                       '"$request" rt=$request_time';
+    access_log /proc/1/fd/1 ingress;
+
     server {
         listen ${INGRESS_PORT};
         server_name _;
+
+        # Health check — responds without proxy
+        location = /health {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
 
         # Pass all requests to Paperless
         location / {
@@ -26,12 +36,15 @@ http {
             proxy_set_header X-Forwarded-Proto  $scheme;
 
             # Required so Paperless CSRF validation passes
-            # Make sure PAPERLESS_CSRF_TRUSTED_ORIGINS is set on the paperless side!
             proxy_set_header Origin             ${PAPERLESS_URL};
             proxy_set_header Referer            ${PAPERLESS_URL}/;
 
+            # Handle redirects from Paperless through Ingress
+            proxy_redirect ${PAPERLESS_URL} /;
+
             # Allow Paperless to be embedded in HA iframe
             proxy_hide_header X-Frame-Options;
+            proxy_hide_header Content-Security-Policy;
             add_header X-Frame-Options "SAMEORIGIN";
 
             # WebSocket support (used by some Paperless features)
