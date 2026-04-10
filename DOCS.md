@@ -14,19 +14,18 @@ inside Home Assistant via **Ingress** -- including Nabu Casa remote access.
 
 ## 1. Configure Paperless
 
-For CSRF validation and redirects to work, the following environment variables must be set
-in your Paperless `docker-compose.yml`:
+Add the following environment variables to your Paperless `docker-compose.yml`:
 
 ```yaml
 environment:
   # Internal LAN URL of Paperless
   - PAPERLESS_URL=http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT
 
-  # HA and your browser may send requests
+  # Allow requests from HA and Nabu Casa
   - PAPERLESS_CSRF_TRUSTED_ORIGINS=http://YOUR_HA_IP:8123,https://YOUR_NABU_CASA_ID.ui.nabu.casa
 
-  # CORS for the HA integration (optional)
-  - PAPERLESS_CORS_ALLOWED_HOSTS=http://YOUR_HA_IP:8123
+  # (Optional) Enable auto-login through the proxy — no login page needed
+  - PAPERLESS_ENABLE_HTTP_REMOTE_USER=true
 ```
 
 Replace the placeholders:
@@ -63,9 +62,28 @@ then reload the Add-on Store.
 
 In the add-on under **Configuration**:
 
+| Option | Required | Description |
+|---|---|---|
+| `paperless_url` | Yes | Full URL of your Paperless instance (e.g. `http://192.168.1.100:8010`) |
+| `paperless_user` | No | Paperless username for auto-login (requires `PAPERLESS_ENABLE_HTTP_REMOTE_USER=true` on Paperless side) |
+
+### Without auto-login
+
 ```yaml
 paperless_url: "http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT"
 ```
+
+You will see the Paperless login page inside HA and log in manually.
+
+### With auto-login (recommended)
+
+```yaml
+paperless_url: "http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT"
+paperless_user: "your_paperless_username"
+```
+
+Requires `PAPERLESS_ENABLE_HTTP_REMOTE_USER=true` in your Paperless config (see step 1).
+This skips the login page entirely -- HA's own authentication is the access control layer.
 
 Then **Start**. A **Paperless** entry appears in the HA sidebar.
 
@@ -78,18 +96,14 @@ no additional port forwarding or VPN needed.
 
 ---
 
-## Known Limitations
-
-| Problem | Cause | Solution |
-|---|---|---|
-| Login page loads but redirect fails | `PAPERLESS_CSRF_TRUSTED_ORIGINS` missing | See step 1 |
-| Static assets (CSS/JS) not loading | Paperless returns absolute URLs | Set `PAPERLESS_URL` correctly |
-| File upload fails | Body size limit | Already disabled (`client_max_body_size 0`) |
-
----
-
 ## Troubleshooting
 
 View add-on logs:
 
 **HA > Settings > Add-ons > Paperless-NGX Proxy > Log**
+
+| Problem | Cause | Solution |
+|---|---|---|
+| Login page shows but redirect fails | Redirect URL rewriting issue | Set `paperless_user` + enable `PAPERLESS_ENABLE_HTTP_REMOTE_USER` to skip login |
+| Static assets (CSS/JS) not loading | Paperless returns absolute URLs | Set `PAPERLESS_URL` correctly in Paperless config |
+| 502 Proxy error | Paperless not reachable | Check `paperless_url` and that Paperless is running |

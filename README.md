@@ -6,7 +6,7 @@ Home Assistant Add-on: Reverse Proxy for [Paperless-NGX](https://docs.paperless-
 
 ## What it does
 
-This add-on runs an nginx reverse proxy that exposes a self-hosted Paperless-NGX instance inside the Home Assistant sidebar through Ingress. No additional port forwarding or VPN required -- works with Nabu Casa remote access out of the box.
+This add-on runs a reverse proxy that exposes a self-hosted Paperless-NGX instance inside the Home Assistant sidebar through Ingress. No additional port forwarding or VPN required -- works with Nabu Casa remote access out of the box.
 
 ## Installation
 
@@ -15,16 +15,17 @@ This add-on runs an nginx reverse proxy that exposes a self-hosted Paperless-NGX
    https://github.com/tKostka/paperless-proxy
    ```
 2. Install **Paperless-NGX Proxy** from the store
-3. Configure `paperless_url` (see below)
+3. Configure (see below)
 4. Start the add-on
 
 ## Configuration
 
-| Option | Description |
-|---|---|
-| `paperless_url` | Full URL of your Paperless-NGX instance (e.g. `http://192.168.1.100:8010`) |
+| Option | Required | Description |
+|---|---|---|
+| `paperless_url` | Yes | Full URL of your Paperless-NGX instance (e.g. `http://192.168.1.100:8010`) |
+| `paperless_user` | No | Paperless username for auto-login (skips login page) |
 
-Make sure to configure `PAPERLESS_CSRF_TRUSTED_ORIGINS` on the Paperless side.
+For auto-login, also set `PAPERLESS_ENABLE_HTTP_REMOTE_USER=true` in your Paperless config.
 See [DOCS.md](DOCS.md) for full setup instructions.
 
 ## Supported Architectures

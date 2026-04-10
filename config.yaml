@@ -1,5 +1,5 @@
 name: "Paperless-NGX Proxy"
-version: "1.5.1"
+version: "2.0.0"
 slug: "paperless_proxy"
 description: >-
   Reverse Proxy for Paperless-NGX — exposes a self-hosted Paperless-NGX
@@ -22,8 +22,10 @@ hassio_api: true
 host_network: true
 options:
   paperless_url: ""
+  paperless_user: ""
 schema:
   paperless_url: url
+  paperless_user: "str?"
 build_from:
   aarch64: "ghcr.io/home-assistant/aarch64-base:latest"
   amd64: "ghcr.io/home-assistant/amd64-base:latest"
