@@ -13,7 +13,7 @@ INGRESS_ENTRY=$(bashio::addon.ingress_entry)
 INGRESS_ENTRY="${INGRESS_ENTRY%/}"
 
 bashio::log.info "══════════════════════════════════════════════"
-bashio::log.info " Paperless-NGX Proxy v1.3.0"
+bashio::log.info " Paperless-NGX Proxy v1.3.1"
 bashio::log.info " Target:       ${PAPERLESS_URL}"
 bashio::log.info " Ingress port: 8099"
 bashio::log.info " Ingress path: ${INGRESS_ENTRY}"

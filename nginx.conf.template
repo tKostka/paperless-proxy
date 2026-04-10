@@ -11,14 +11,16 @@ http {
     default_type  application/octet-stream;
     sendfile      on;
 
-    log_format ingress '$remote_addr [$status] "$request" -> $upstream_addr rt=$request_time';
+    log_format ingress '$remote_addr [$status] "$request" '
+                       'loc="$sent_http_location" '
+                       'up_loc="$upstream_http_location"';
     access_log /proc/1/fd/1 ingress;
 
     server {
         listen ${INGRESS_PORT};
         server_name _;
 
-        # Health check — responds without proxy
+        # Health check
         location = /health {
             return 200 'OK';
             add_header Content-Type text/plain;
@@ -38,15 +40,15 @@ http {
             proxy_set_header Referer            ${PAPERLESS_URL}/;
 
             # --- Redirect rewriting (302/301 Location headers) ---
-            proxy_redirect ${PAPERLESS_URL}/ ${INGRESS_ENTRY}/;
-            proxy_redirect / ${INGRESS_ENTRY}/;
+            # Regex: match any absolute or relative redirect, prepend Ingress path
+            proxy_redirect ~^https?://[^/]+(/.*)$ ${INGRESS_ENTRY}$1;
+            proxy_redirect ~^/(.*) ${INGRESS_ENTRY}/$1;
 
             # --- HTML/CSS/JS URL rewriting via sub_filter ---
-            # Disable gzip from upstream so sub_filter can operate
             proxy_set_header Accept-Encoding "";
 
             sub_filter_once off;
-            sub_filter_types text/html text/css application/javascript application/json;
+            sub_filter_types text/css application/javascript application/json;
 
             # Rewrite absolute paths in HTML attributes
             sub_filter 'href="/' 'href="${INGRESS_ENTRY}/';
@@ -78,7 +80,7 @@ http {
             proxy_set_header Upgrade   $http_upgrade;
             proxy_set_header Connection "upgrade";
 
-            # --- Timeouts for large uploads ---
+            # --- Timeouts ---
             proxy_read_timeout    300s;
             proxy_connect_timeout  10s;
             proxy_send_timeout    300s;
