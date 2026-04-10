@@ -1,11 +1,13 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest
 FROM ${BUILD_FROM}
 
-RUN apk add --no-cache nginx gettext bash
+RUN apk add --no-cache \
+    bash \
+    nginx \
+    gettext \
+    && rm -rf /var/cache/apk/*
 
-COPY run.sh /run.sh
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
 
-RUN chmod +x /run.sh
-
-CMD ["/run.sh"]
+COPY run.sh /etc/services.d/paperless_proxy/run
+RUN chmod +x /etc/services.d/paperless_proxy/run

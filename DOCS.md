@@ -1,89 +1,95 @@
-# Paperless-NGX Proxy – Dokumentation
+# Paperless-NGX Proxy -- Documentation
 
-Dieses Addon fungiert als Reverse Proxy, der eine selbst gehostete **Paperless-NGX**-Instanz
-über Home Assistants **Ingress**-System einbindet – inklusive Nabu Casa Remote-Zugriff.
-
----
-
-## Voraussetzungen
-
-- Paperless-NGX läuft im lokalen Netzwerk (z. B. per Docker/Portainer)
-- Home Assistant kann die Paperless-Instanz per HTTP erreichen (gleicher Host oder LAN)
+This add-on acts as a reverse proxy that exposes a self-hosted **Paperless-NGX** instance
+inside Home Assistant via **Ingress** -- including Nabu Casa remote access.
 
 ---
 
-## 1. Paperless konfigurieren
+## Prerequisites
 
-Damit CSRF-Validierung und Redirects funktionieren, müssen folgende Umgebungsvariablen
-in deinem Paperless `docker-compose.yml` gesetzt sein:
+- Paperless-NGX is running on the local network (e.g. via Docker/Portainer)
+- Home Assistant can reach the Paperless instance via HTTP (same host or LAN)
+
+---
+
+## 1. Configure Paperless
+
+For CSRF validation and redirects to work, the following environment variables must be set
+in your Paperless `docker-compose.yml`:
 
 ```yaml
 environment:
-  # Interne LAN-URL von Paperless
-  - PAPERLESS_URL=http://192.168.7.221:8010
+  # Internal LAN URL of Paperless
+  - PAPERLESS_URL=http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT
 
-  # HA und dein Browser dürfen Anfragen senden
-  - PAPERLESS_CSRF_TRUSTED_ORIGINS=http://192.168.7.221:8123,https://YOUR_NABU_CASA_ID.ui.nabu.casa
+  # HA and your browser may send requests
+  - PAPERLESS_CSRF_TRUSTED_ORIGINS=http://YOUR_HA_IP:8123,https://YOUR_NABU_CASA_ID.ui.nabu.casa
 
-  # CORS für die HA-Integration (optional)
-  - PAPERLESS_CORS_ALLOWED_HOSTS=http://192.168.7.221:8123
+  # CORS for the HA integration (optional)
+  - PAPERLESS_CORS_ALLOWED_HOSTS=http://YOUR_HA_IP:8123
 ```
 
-Danach Paperless neu starten:
+Replace the placeholders:
+- `YOUR_PAPERLESS_IP` -- IP address of your Paperless host (e.g. `192.168.1.100`)
+- `YOUR_PAPERLESS_PORT` -- Port Paperless is running on (e.g. `8010`)
+- `YOUR_HA_IP` -- IP address of your Home Assistant instance
+- `YOUR_NABU_CASA_ID` -- Your Nabu Casa cloud ID (only needed for remote access)
+
+Then restart Paperless:
 ```bash
 docker compose down && docker compose up -d
 ```
 
 ---
 
-## 2. Addon installieren
+## 2. Install the Add-on
 
-### Via GitHub-Repository (empfohlen)
+### Via GitHub Repository (recommended)
 
-1. HA → **Einstellungen → Add-ons → Add-on-Store**
-2. Oben rechts: **⋮ → Repositories**
-3. URL eintragen: `https://github.com/YOUR_USERNAME/hassio-paperless-proxy`
-4. **Paperless-NGX Proxy** erscheint unter „YOUR_USERNAME"-Repository
-5. Installieren
+1. In HA go to **Settings > Add-ons > Add-on Store**
+2. Top right menu: **Repositories**
+3. Add URL: `https://github.com/tKostka/paperless-proxy`
+4. **Paperless-NGX Proxy** appears in the store
+5. Install
 
-### Lokal (ohne GitHub)
+### Local (without GitHub)
 
-Ordner `paperless-proxy/` nach `/addons/paperless_proxy/` auf dem HA-Host kopieren,
-dann im Add-on-Store **Neu laden**.
+Copy the `paperless-proxy/` folder to `/addons/paperless_proxy/` on the HA host,
+then reload the Add-on Store.
 
 ---
 
-## 3. Addon konfigurieren
+## 3. Configure the Add-on
 
-Im Addon unter **Konfiguration**:
+In the add-on under **Configuration**:
 
 ```yaml
-paperless_url: "http://192.168.7.221:8010"
+paperless_url: "http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT"
 ```
 
-Dann **Starten**. In der HA-Seitenleiste erscheint der Eintrag **Paperless**.
+Then **Start**. A **Paperless** entry appears in the HA sidebar.
 
 ---
 
-## Nabu Casa / Remote-Zugriff
+## Nabu Casa / Remote Access
 
-Sobald das Addon via Ingress läuft, ist Paperless automatisch über Nabu Casa erreichbar –
-keine zusätzliche Portfreigabe oder VPN nötig.
+Once the add-on runs via Ingress, Paperless is automatically reachable through Nabu Casa --
+no additional port forwarding or VPN needed.
 
 ---
 
-## Bekannte Einschränkungen
+## Known Limitations
 
-| Problem | Ursache | Lösung |
+| Problem | Cause | Solution |
 |---|---|---|
-| Login-Seite lädt, aber Redirect schlägt fehl | `PAPERLESS_CSRF_TRUSTED_ORIGINS` fehlt | Siehe Schritt 1 |
-| Statische Assets (CSS/JS) laden nicht | Paperless gibt absolute URLs aus | `PAPERLESS_URL` korrekt setzen |
-| Datei-Upload schlägt fehl | Body-Size-Limit | Bereits deaktiviert (`client_max_body_size 0`) |
+| Login page loads but redirect fails | `PAPERLESS_CSRF_TRUSTED_ORIGINS` missing | See step 1 |
+| Static assets (CSS/JS) not loading | Paperless returns absolute URLs | Set `PAPERLESS_URL` correctly |
+| File upload fails | Body size limit | Already disabled (`client_max_body_size 0`) |
 
 ---
 
 ## Troubleshooting
 
-Logs des Addons anzeigen:
+View add-on logs:
 
-**HA → Einstellungen → Add-ons → Paperless-NGX Proxy → Protokoll**
+**HA > Settings > Add-ons > Paperless-NGX Proxy > Log**

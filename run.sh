@@ -1,25 +1,27 @@
-#!/usr/bin/env bash
-set -e
+#!/usr/bin/with-contenv bashio
 
-# Read option from HA addon config
 PAPERLESS_URL=$(bashio::config 'paperless_url')
-
-# Strip trailing slash
 PAPERLESS_URL="${PAPERLESS_URL%/}"
 
-bashio::log.info "Starting Paperless-NGX Proxy → ${PAPERLESS_URL}"
+if [ -z "${PAPERLESS_URL}" ] || [ "${PAPERLESS_URL}" = "null" ]; then
+    bashio::log.fatal "paperless_url is not configured! Set it in the add-on configuration."
+    exit 1
+fi
 
-# Export for envsubst
+bashio::log.info "══════════════════════════════════════════════"
+bashio::log.info " Paperless-NGX Proxy v1.2.0"
+bashio::log.info " Target: ${PAPERLESS_URL}"
+bashio::log.info " Ingress port: 8099"
+bashio::log.info "══════════════════════════════════════════════"
+
 export PAPERLESS_URL
 export INGRESS_PORT=8099
 
-# Render nginx config from template
 envsubst '${PAPERLESS_URL} ${INGRESS_PORT}' \
   < /etc/nginx/nginx.conf.template \
   > /etc/nginx/nginx.conf
 
-# Validate config
-nginx -t
+nginx -t 2>&1 || { bashio::log.fatal "nginx config test failed"; exit 1; }
 
-# Run in foreground
+bashio::log.info "Starting nginx..."
 exec nginx -g 'daemon off;'
