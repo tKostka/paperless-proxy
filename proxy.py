@@ -118,11 +118,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length) if content_length > 0 else None
 
-        # Build upstream request headers
+        # Build upstream request headers (preserve all values including duplicates)
         headers = {}
-        for key in self.headers:
+        for key, value in self.headers.items():
             if key.lower() not in STRIP_REQUEST_HEADERS:
-                headers[key] = self.headers[key]
+                headers[key] = value
 
         # Set correct upstream Host and origin headers
         parsed = urlparse(PAPERLESS_URL)
@@ -155,9 +155,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def _send_response(self, status: int, headers, body: bytes):
         content_type = ''
-        for key in headers:
+        for key, value in headers.items():
             if key.lower() == 'content-type':
-                content_type = headers[key]
+                content_type = value
                 break
 
         # Rewrite body if applicable (only for non-redirect responses)
@@ -167,11 +167,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(status)
 
         # Forward headers with modifications
-        for key in headers:
+        # Use items() to get ALL header values including duplicate Set-Cookie
+        for key, value in headers.items():
             lk = key.lower()
             if lk in STRIP_RESPONSE_HEADERS:
                 continue
-            value = headers[key]
 
             # Rewrite Location header for redirects
             if lk == 'location':
