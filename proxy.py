@@ -6,13 +6,13 @@ A lightweight reverse proxy that handles:
 - X-Frame-Options removal (allow iframe embedding in HA)
 - Optional auto-authentication via Remote-User header
 """
-import json
 import os
 import re
 import sys
 import urllib.error
 import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
 
@@ -28,6 +28,8 @@ STRIP_RESPONSE_HEADERS = {
     'content-length',       # recalculated after rewriting
     'transfer-encoding',    # we send full body, not chunked
     'connection',
+    'server',               # Python adds its own
+    'date',                 # Python adds its own
 }
 
 # Headers to NOT forward from client to upstream
@@ -100,8 +102,14 @@ def rewrite_body(body: bytes, content_type: str) -> bytes:
     return text.encode('utf-8')
 
 
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle each request in a new thread."""
+    daemon_threads = True
+
+
 class ProxyHandler(BaseHTTPRequestHandler):
     """HTTP handler that proxies requests to Paperless-NGX."""
+    protocol_version = 'HTTP/1.1'
 
     def _proxy(self, method: str):
         target_url = PAPERLESS_URL + self.path
@@ -210,7 +218,7 @@ def main():
         print(f'[proxy] Auto-login:   disabled')
     print(f'[proxy] Starting...')
 
-    server = HTTPServer(('0.0.0.0', LISTEN_PORT), ProxyHandler)
+    server = ThreadingHTTPServer(('0.0.0.0', LISTEN_PORT), ProxyHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
