@@ -11,8 +11,7 @@ http {
     default_type  application/octet-stream;
     sendfile      on;
 
-    log_format ingress '$remote_addr - $request_uri -> $upstream_addr [$status] '
-                       '"$request" rt=$request_time';
+    log_format ingress '$remote_addr [$status] "$request" -> $upstream_addr rt=$request_time';
     access_log /proc/1/fd/1 ingress;
 
     server {
@@ -25,39 +24,66 @@ http {
             add_header Content-Type text/plain;
         }
 
-        # Pass all requests to Paperless
         location / {
             proxy_pass ${PAPERLESS_URL};
 
-            # Standard proxy headers
+            # --- Headers to upstream ---
             proxy_set_header Host               $http_host;
             proxy_set_header X-Real-IP          $remote_addr;
             proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto  $scheme;
 
-            # Required so Paperless CSRF validation passes
+            # CSRF: tell Paperless the request comes from its own origin
             proxy_set_header Origin             ${PAPERLESS_URL};
             proxy_set_header Referer            ${PAPERLESS_URL}/;
 
-            # Handle redirects from Paperless through Ingress
-            proxy_redirect ${PAPERLESS_URL} /;
+            # --- Redirect rewriting (302/301 Location headers) ---
+            proxy_redirect ${PAPERLESS_URL}/ ${INGRESS_ENTRY}/;
+            proxy_redirect / ${INGRESS_ENTRY}/;
 
-            # Allow Paperless to be embedded in HA iframe
+            # --- HTML/CSS/JS URL rewriting via sub_filter ---
+            # Disable gzip from upstream so sub_filter can operate
+            proxy_set_header Accept-Encoding "";
+
+            sub_filter_once off;
+            sub_filter_types text/html text/css application/javascript application/json;
+
+            # Rewrite absolute paths in HTML attributes
+            sub_filter 'href="/' 'href="${INGRESS_ENTRY}/';
+            sub_filter "href='/" "href='${INGRESS_ENTRY}/";
+            sub_filter 'src="/' 'src="${INGRESS_ENTRY}/';
+            sub_filter "src='/" "src='${INGRESS_ENTRY}/";
+            sub_filter 'action="/' 'action="${INGRESS_ENTRY}/';
+
+            # Rewrite common Paperless paths in JS/CSS
+            sub_filter '"/static/' '"${INGRESS_ENTRY}/static/';
+            sub_filter '"/api/' '"${INGRESS_ENTRY}/api/';
+            sub_filter '"/accounts/' '"${INGRESS_ENTRY}/accounts/';
+            sub_filter "'/static/" "'${INGRESS_ENTRY}/static/";
+            sub_filter "'/api/" "'${INGRESS_ENTRY}/api/";
+            sub_filter "'/accounts/" "'${INGRESS_ENTRY}/accounts/";
+
+            # Rewrite fetch/redirect targets in JS
+            sub_filter 'url:"/' 'url:"${INGRESS_ENTRY}/';
+            sub_filter "url:'/" "url:'${INGRESS_ENTRY}/";
+            sub_filter 'redirect:"/' 'redirect:"${INGRESS_ENTRY}/';
+
+            # --- Iframe embedding ---
             proxy_hide_header X-Frame-Options;
             proxy_hide_header Content-Security-Policy;
             add_header X-Frame-Options "SAMEORIGIN";
 
-            # WebSocket support (used by some Paperless features)
+            # --- WebSocket ---
             proxy_http_version 1.1;
             proxy_set_header Upgrade   $http_upgrade;
             proxy_set_header Connection "upgrade";
 
-            # Timeouts for large document uploads
+            # --- Timeouts for large uploads ---
             proxy_read_timeout    300s;
             proxy_connect_timeout  10s;
             proxy_send_timeout    300s;
 
-            # Increase buffer for large responses
+            # --- Buffers ---
             proxy_buffer_size         128k;
             proxy_buffers         4 256k;
             proxy_busy_buffers_size   256k;

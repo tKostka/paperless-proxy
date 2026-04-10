@@ -8,16 +8,22 @@ if [ -z "${PAPERLESS_URL}" ] || [ "${PAPERLESS_URL}" = "null" ]; then
     exit 1
 fi
 
+# Get the Ingress entry path (e.g. /api/hassio_ingress/abc123...)
+INGRESS_ENTRY=$(bashio::addon.ingress_entry)
+INGRESS_ENTRY="${INGRESS_ENTRY%/}"
+
 bashio::log.info "══════════════════════════════════════════════"
-bashio::log.info " Paperless-NGX Proxy v1.2.1"
-bashio::log.info " Target: ${PAPERLESS_URL}"
+bashio::log.info " Paperless-NGX Proxy v1.3.0"
+bashio::log.info " Target:       ${PAPERLESS_URL}"
 bashio::log.info " Ingress port: 8099"
+bashio::log.info " Ingress path: ${INGRESS_ENTRY}"
 bashio::log.info "══════════════════════════════════════════════"
 
 export PAPERLESS_URL
 export INGRESS_PORT=8099
+export INGRESS_ENTRY
 
-envsubst '${PAPERLESS_URL} ${INGRESS_PORT}' \
+envsubst '${PAPERLESS_URL} ${INGRESS_PORT} ${INGRESS_ENTRY}' \
   < /etc/nginx/nginx.conf.template \
   > /etc/nginx/nginx.conf
 
