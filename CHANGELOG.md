@@ -1,13 +1,16 @@
 # Changelog
 
-## 2.0.0
+## 2.0.2
 
 - **Breaking**: Replaced nginx with Python reverse proxy for reliable Ingress support
 - Fixed: Redirect rewriting now uses relative paths (no more port 8099 in URLs)
 - Fixed: HTML/JS/CSS URL rewriting without double-prefixing
 - Fixed: Set-Cookie path rewriting for Ingress
+- Fixed: Preserve all Set-Cookie headers (sessionid was lost with duplicate keys)
+- Fixed: HTTP/1.1 protocol for HA Supervisor compatibility
 - Added: `paperless_user` option for auto-login via Remote-User header
 - Added: X-Frame-Options and CSP header stripping for iframe embedding
+- Added: ThreadingHTTPServer for concurrent request handling
 - Removed: nginx and all nginx modules (no longer needed)
 
 ## 1.2.0
