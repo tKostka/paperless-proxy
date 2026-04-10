@@ -12,84 +12,148 @@ http {
     sendfile      on;
 
     log_format ingress '$remote_addr [$status] "$request" '
-                       'loc="$sent_http_location" '
                        'up_loc="$upstream_http_location"';
+    access_log /var/log/nginx/access.log ingress;
     access_log /proc/1/fd/1 ingress;
+
+    # Extract path from upstream Location header for internal redirect following
+    map $upstream_http_location $redirect_uri {
+        "~^https?://[^/]+(/.*)$"  $1;
+        "~^(/.*)"                 $1;
+        default                   /;
+    }
 
     server {
         listen ${INGRESS_PORT};
         server_name _;
 
-        # Health check
+        # ── Debug page ───────────────────────────────────────────────────
+        location = /debug {
+            default_type text/html;
+            alias /usr/share/nginx/debug.html;
+        }
+
+        # Return recent log lines as plain text
+        location = /log {
+            default_type text/plain;
+            alias /var/log/nginx/access.log;
+        }
+
+        # ── Health check ─────────────────────────────────────────────────
         location = /health {
             return 200 'OK';
             add_header Content-Type text/plain;
         }
 
+        # ── Main proxy ──────────────────────────────────────────────────
         location / {
             proxy_pass ${PAPERLESS_URL};
 
-            # --- Headers to upstream ---
+            # Follow redirects internally — client never sees 302
+            proxy_intercept_errors on;
+            recursive_error_pages on;
+            error_page 301 302 303 307 308 = @follow_redirect;
+
+            # Headers to upstream
             proxy_set_header Host               $http_host;
             proxy_set_header X-Real-IP          $remote_addr;
             proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto  $scheme;
-
-            # CSRF: tell Paperless the request comes from its own origin
             proxy_set_header Origin             ${PAPERLESS_URL};
             proxy_set_header Referer            ${PAPERLESS_URL}/;
 
-            # --- Redirect rewriting (302/301 Location headers) ---
-            # Regex: match any absolute or relative redirect, prepend Ingress path
-            proxy_redirect ~^https?://[^/]+(/.*)$ ${INGRESS_ENTRY}$1;
-            proxy_redirect ~^/(.*) ${INGRESS_ENTRY}/$1;
-
-            # --- HTML/CSS/JS URL rewriting via sub_filter ---
+            # Disable upstream gzip so sub_filter can work
             proxy_set_header Accept-Encoding "";
 
+            # URL rewriting in HTML/CSS/JS
             sub_filter_once off;
             sub_filter_types text/css application/javascript application/json;
-
-            # Rewrite absolute paths in HTML attributes
             sub_filter 'href="/' 'href="${INGRESS_ENTRY}/';
             sub_filter "href='/" "href='${INGRESS_ENTRY}/";
             sub_filter 'src="/' 'src="${INGRESS_ENTRY}/';
             sub_filter "src='/" "src='${INGRESS_ENTRY}/";
             sub_filter 'action="/' 'action="${INGRESS_ENTRY}/';
-
-            # Rewrite common Paperless paths in JS/CSS
             sub_filter '"/static/' '"${INGRESS_ENTRY}/static/';
             sub_filter '"/api/' '"${INGRESS_ENTRY}/api/';
             sub_filter '"/accounts/' '"${INGRESS_ENTRY}/accounts/';
             sub_filter "'/static/" "'${INGRESS_ENTRY}/static/";
             sub_filter "'/api/" "'${INGRESS_ENTRY}/api/";
             sub_filter "'/accounts/" "'${INGRESS_ENTRY}/accounts/";
-
-            # Rewrite fetch/redirect targets in JS
             sub_filter 'url:"/' 'url:"${INGRESS_ENTRY}/';
             sub_filter "url:'/" "url:'${INGRESS_ENTRY}/";
-            sub_filter 'redirect:"/' 'redirect:"${INGRESS_ENTRY}/';
 
-            # --- Iframe embedding ---
+            # Iframe embedding
             proxy_hide_header X-Frame-Options;
             proxy_hide_header Content-Security-Policy;
             add_header X-Frame-Options "SAMEORIGIN";
 
-            # --- WebSocket ---
+            # WebSocket
             proxy_http_version 1.1;
             proxy_set_header Upgrade   $http_upgrade;
             proxy_set_header Connection "upgrade";
 
-            # --- Timeouts ---
+            # Timeouts
             proxy_read_timeout    300s;
             proxy_connect_timeout  10s;
             proxy_send_timeout    300s;
 
-            # --- Buffers ---
+            # Buffers
             proxy_buffer_size         128k;
             proxy_buffers         4 256k;
             proxy_busy_buffers_size   256k;
+            client_max_body_size 0;
+        }
 
+        # ── Internal redirect follower ───────────────────────────────────
+        # Nginx follows upstream 302s internally so the client gets the
+        # final page without ever seeing a redirect through Ingress.
+        location @follow_redirect {
+            internal;
+            rewrite ^ $redirect_uri break;
+            proxy_pass ${PAPERLESS_URL};
+
+            proxy_intercept_errors on;
+            recursive_error_pages on;
+            error_page 301 302 303 307 308 = @follow_redirect;
+
+            proxy_set_header Host               $http_host;
+            proxy_set_header X-Real-IP          $remote_addr;
+            proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto  $scheme;
+            proxy_set_header Origin             ${PAPERLESS_URL};
+            proxy_set_header Referer            ${PAPERLESS_URL}/;
+            proxy_set_header Accept-Encoding "";
+
+            sub_filter_once off;
+            sub_filter_types text/css application/javascript application/json;
+            sub_filter 'href="/' 'href="${INGRESS_ENTRY}/';
+            sub_filter "href='/" "href='${INGRESS_ENTRY}/";
+            sub_filter 'src="/' 'src="${INGRESS_ENTRY}/';
+            sub_filter "src='/" "src='${INGRESS_ENTRY}/";
+            sub_filter 'action="/' 'action="${INGRESS_ENTRY}/';
+            sub_filter '"/static/' '"${INGRESS_ENTRY}/static/';
+            sub_filter '"/api/' '"${INGRESS_ENTRY}/api/';
+            sub_filter '"/accounts/' '"${INGRESS_ENTRY}/accounts/';
+            sub_filter "'/static/" "'${INGRESS_ENTRY}/static/";
+            sub_filter "'/api/" "'${INGRESS_ENTRY}/api/";
+            sub_filter "'/accounts/" "'${INGRESS_ENTRY}/accounts/";
+            sub_filter 'url:"/' 'url:"${INGRESS_ENTRY}/';
+            sub_filter "url:'/" "url:'${INGRESS_ENTRY}/";
+
+            proxy_hide_header X-Frame-Options;
+            proxy_hide_header Content-Security-Policy;
+            add_header X-Frame-Options "SAMEORIGIN";
+
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade   $http_upgrade;
+            proxy_set_header Connection "upgrade";
+
+            proxy_read_timeout    300s;
+            proxy_connect_timeout  10s;
+            proxy_send_timeout    300s;
+            proxy_buffer_size         128k;
+            proxy_buffers         4 256k;
+            proxy_busy_buffers_size   256k;
             client_max_body_size 0;
         }
     }

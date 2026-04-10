@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paperless-NGX Proxy – Debug</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, system-ui, sans-serif; background: #1c1c1c; color: #e0e0e0; padding: 16px; }
+  h1 { font-size: 1.2em; margin-bottom: 12px; color: #17a262; }
+  .bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  button { background: #17a262; color: #fff; border: none; padding: 8px 16px; border-radius: 6px;
+           font-size: 14px; cursor: pointer; }
+  button:active { background: #128a52; }
+  .info { background: #2a2a2a; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+  .info code { color: #4fc08d; }
+  pre { background: #111; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px;
+        line-height: 1.5; white-space: pre-wrap; word-break: break-all; max-height: 70vh; overflow-y: auto; }
+  .ok { color: #4fc08d; }
+  .err { color: #e74c3c; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+           background: #17a262; color: #fff; padding: 8px 20px; border-radius: 20px;
+           font-size: 14px; opacity: 0; transition: opacity 0.3s; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<h1>Paperless-NGX Proxy – Debug</h1>
+<div class="info">
+  <strong>Version:</strong> <code>__VERSION__</code><br>
+  <strong>Target:</strong> <code>__PAPERLESS_URL__</code><br>
+  <strong>Ingress:</strong> <code>__INGRESS_ENTRY__</code>
+</div>
+<div class="bar">
+  <button onclick="loadLog()">Refresh Log</button>
+  <button onclick="copyLog()">Copy to Clipboard</button>
+  <button onclick="loadLog(999)">Full Log</button>
+</div>
+<pre id="log">Loading...</pre>
+<div class="toast" id="toast">Copied!</div>
+<script>
+var logText = '';
+function loadLog(n) {
+  fetch((n ? '?lines=' + n : ''), {credentials: 'same-origin'})
+    .then(function() { return fetch('log' + (n ? '?lines=' + n : ''), {credentials: 'same-origin'}); })
+    .catch(function() {})
+  fetch('log' + (n ? '?lines=' + n : ''), {credentials: 'same-origin'})
+    .then(function(r) { return r.text(); })
+    .then(function(t) {
+      logText = t;
+      var el = document.getElementById('log');
+      el.textContent = t || '(empty)';
+      el.scrollTop = el.scrollHeight;
+    })
+    .catch(function(e) { document.getElementById('log').textContent = 'Error: ' + e; });
+}
+function copyLog() {
+  if (!logText) return;
+  navigator.clipboard.writeText(logText).then(function() {
+    var t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 1500);
+  }).catch(function() {
+    // fallback
+    var ta = document.createElement('textarea');
+    ta.value = logText;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    var t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 1500);
+  });
+}
+loadLog();
+</script>
+</body>
+</html>
