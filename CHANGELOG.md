@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.1
+
+- Fixed: Document preview eye icon — Paperless uses `<a target="_blank">`
+  not `window.open()`, so the previous fix didn't help. Now also intercepts
+  clicks on same-origin links with `target="_blank"` and navigates within
+  the current frame instead.
+
 ## 2.1.0
 
 - Fixed: Document preview (eye icon) opening external browser → 401

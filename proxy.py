@@ -99,17 +99,24 @@ def rewrite_body(body: bytes, content_type: str) -> bytes:
     # Clean up any remaining double-prefix
     text = text.replace(p + p, p)
 
-    # Inject window.open override into HTML so document preview opens
-    # within the iframe instead of an external browser (which loses HA auth).
+    # Inject script to keep navigation inside the Ingress iframe.
+    # Without this, document preview (eye icon) opens in an external
+    # browser which has no HA session → 401 Unauthorized.
     if 'text/html' in content_type and '</head>' in text:
-        script = (
-            '<script>(function(){var o=window.open;'
-            'window.open=function(u,t,f){'
-            'if(u){try{var x=new URL(u,window.location.href);'
-            'if(x.origin===window.location.origin){'
-            'window.location.href=x.href;return null;}}catch(e){}}'
-            'return o.call(window,u,t,f);};})();</script>'
-        )
+        script = '''<script>(function(){
+var sameOrigin=function(u){try{return new URL(u,location.href).origin===location.origin;}catch(e){return false;}};
+// Override window.open for same-origin URLs
+var o=window.open;
+window.open=function(u,t,f){if(u&&sameOrigin(u)){location.href=new URL(u,location.href).href;return null;}return o.call(window,u,t,f);};
+// Intercept clicks on <a target="_blank"> for same-origin links
+document.addEventListener('click',function(e){
+var a=e.target.closest&&e.target.closest('a[target]');
+if(!a)return;
+var t=a.getAttribute('target');
+if((t==='_blank'||t==='_new')&&a.href&&sameOrigin(a.href)){
+e.preventDefault();e.stopPropagation();location.href=a.href;}
+},true);
+})();</script>'''
         text = text.replace('</head>', script + '</head>', 1)
 
     return text.encode('utf-8')
