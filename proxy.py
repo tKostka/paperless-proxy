@@ -120,29 +120,29 @@ e.preventDefault();e.stopPropagation();location.href=a.href;}
         css = '''<style>
 /* Paperless preview popover — base */
 .popover.popover-preview{max-width:min(95vw,70rem)!important;}
-.popover.popover-preview .popover-body{padding:0.25rem!important;overflow:hidden!important;}
-.preview-popup-container{max-width:100%!important;overflow:hidden!important;}
-.preview-popup-container>*{width:min(90vw,65rem)!important;height:min(75vh,45rem)!important;max-width:100%!important;}
-/* Inner viewers (PDF canvas, image, iframe) must scale to container */
+.popover.popover-preview .popover-body{padding:0.25rem!important;overflow:hidden!important;height:auto!important;}
+.preview-popup-container{max-width:100%!important;overflow:hidden!important;display:flex!important;align-items:center!important;justify-content:center!important;}
+.preview-popup-container>*{width:min(90vw,65rem)!important;height:min(80vh,50rem)!important;max-width:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;}
+/* Inner viewers (PDF canvas, image, iframe) scale to fit container */
 .preview-popup-container canvas,
 .preview-popup-container img,
-.preview-popup-container iframe,
+.preview-popup-container iframe{max-width:100%!important;max-height:100%!important;width:auto!important;height:auto!important;object-fit:contain!important;}
 .preview-popup-container pngx-pdf-viewer,
-.preview-popup-container pdf-viewer{max-width:100%!important;}
-.preview-popup-container pngx-pdf-viewer,
-.preview-popup-container pdf-viewer{display:block;width:100%!important;height:100%!important;}
+.preview-popup-container pdf-viewer{display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;height:100%!important;}
 
-/* Mobile: turn popover into a centered fixed overlay */
+/* Mobile: turn popover into a centered fixed overlay using full viewport */
 @media(max-width:767.98px){
 .popover.popover-preview{
 position:fixed!important;
 top:0.5rem!important;left:0.5rem!important;right:0.5rem!important;bottom:0.5rem!important;
 max-width:none!important;width:auto!important;
 transform:none!important;margin:0!important;
+display:flex!important;flex-direction:column!important;
 }
 .popover.popover-preview>.popover-arrow{display:none!important;}
+.popover.popover-preview .popover-body{flex:1 1 auto!important;min-height:0!important;}
 .preview-popup-container{width:100%!important;height:100%!important;}
-.preview-popup-container>*{width:100%!important;height:calc(100vh - 4rem)!important;}
+.preview-popup-container>*{width:100%!important;height:100%!important;}
 }
 
 /* Generic Bootstrap modals (document detail dialog, etc) */

@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 
-VERSION="2.1.4"
+VERSION="2.1.5"
 
 PAPERLESS_URL=$(bashio::config 'paperless_url')
 PAPERLESS_URL="${PAPERLESS_URL%/}"

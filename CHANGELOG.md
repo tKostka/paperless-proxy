@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.5
+
+- Fixed: Empty space below the PDF in the preview popover. The canvas
+  rendered at its natural pixel size and didn't fill the available
+  height. Now uses object-fit: contain so the PDF scales to fit the
+  whole popover area while preserving aspect ratio.
+- Use flex centering throughout the popover hierarchy.
+
 ## 2.1.4
 
 - Fixed: Preview popover overflow on smartphone — PDF/canvas inside the
