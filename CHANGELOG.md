@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.4
+
+- Fixed: Preview popover overflow on smartphone — PDF/canvas inside the
+  popover was rendered at fixed width and overflowed. Now scales canvas/img/
+  iframe/pdf-viewer to 100% of container.
+- Fixed: On mobile (<768px), preview popover is now a centered fixed overlay
+  (no longer anchored to the eye button) so it can use the full screen.
+- Tablet: bumped popover max width from 60rem to 70rem.
+
 ## 2.1.3
 
 - Fixed: Document preview was a Paperless popover (`.popover-preview`),

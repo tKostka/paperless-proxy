@@ -116,19 +116,39 @@ e.preventDefault();e.stopPropagation();location.href=a.href;}
 },true);
 })();</script>'''
 
-        # CSS: make Paperless preview popover and modals responsive inside Ingress.
-        # Paperless's preview-popup uses fixed 30rem width and 32rem max-width.
-        # On smartphones the title overflows, on tablets there's wasted space.
+        # CSS: make Paperless preview popover responsive inside Ingress iframe.
         css = '''<style>
-/* Paperless preview popover (eye icon) */
-.popover.popover-preview{max-width:min(95vw,60rem)!important;}
-.preview-popup-container>*{width:min(90vw,55rem)!important;height:min(75vh,40rem)!important;}
-/* Generic Bootstrap modals (document detail, etc) */
+/* Paperless preview popover — base */
+.popover.popover-preview{max-width:min(95vw,70rem)!important;}
+.popover.popover-preview .popover-body{padding:0.25rem!important;overflow:hidden!important;}
+.preview-popup-container{max-width:100%!important;overflow:hidden!important;}
+.preview-popup-container>*{width:min(90vw,65rem)!important;height:min(75vh,45rem)!important;max-width:100%!important;}
+/* Inner viewers (PDF canvas, image, iframe) must scale to container */
+.preview-popup-container canvas,
+.preview-popup-container img,
+.preview-popup-container iframe,
+.preview-popup-container pngx-pdf-viewer,
+.preview-popup-container pdf-viewer{max-width:100%!important;}
+.preview-popup-container pngx-pdf-viewer,
+.preview-popup-container pdf-viewer{display:block;width:100%!important;height:100%!important;}
+
+/* Mobile: turn popover into a centered fixed overlay */
+@media(max-width:767.98px){
+.popover.popover-preview{
+position:fixed!important;
+top:0.5rem!important;left:0.5rem!important;right:0.5rem!important;bottom:0.5rem!important;
+max-width:none!important;width:auto!important;
+transform:none!important;margin:0!important;
+}
+.popover.popover-preview>.popover-arrow{display:none!important;}
+.preview-popup-container{width:100%!important;height:100%!important;}
+.preview-popup-container>*{width:100%!important;height:calc(100vh - 4rem)!important;}
+}
+
+/* Generic Bootstrap modals (document detail dialog, etc) */
 .modal-title{word-wrap:break-word!important;overflow-wrap:anywhere!important;white-space:normal!important;}
 .modal-dialog{max-width:min(98vw,1600px)!important;}
 @media(max-width:767.98px){
-.popover.popover-preview{max-width:98vw!important;}
-.preview-popup-container>*{width:95vw!important;height:70vh!important;}
 .modal-dialog{max-width:100vw!important;margin:0.25rem!important;}
 .modal-content{max-height:calc(100vh - 0.5rem)!important;}
 }
