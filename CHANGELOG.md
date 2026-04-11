@@ -2,6 +2,7 @@
 
 ## 2.0.2
 
+- **No more Paperless-side config**: `PAPERLESS_CSRF_TRUSTED_ORIGINS` and `PAPERLESS_URL` are no longer required because the proxy spoofs Host/Origin/Referer headers
 - **Breaking**: Replaced nginx with Python reverse proxy for reliable Ingress support
 - Fixed: Redirect rewriting now uses relative paths (no more port 8099 in URLs)
 - Fixed: HTML/JS/CSS URL rewriting without double-prefixing

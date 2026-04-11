@@ -8,6 +8,8 @@ Home Assistant Add-on: Reverse Proxy for [Paperless-NGX](https://docs.paperless-
 
 This add-on runs a reverse proxy that exposes a self-hosted Paperless-NGX instance inside the Home Assistant sidebar through Ingress. No additional port forwarding or VPN required -- works with Nabu Casa remote access out of the box.
 
+**No Paperless-side configuration required.** The proxy spoofs the necessary headers so Paperless's CSRF and `ALLOWED_HOSTS` checks pass automatically.
+
 ## Installation
 
 1. Click the button above, or manually add this repository URL in **Settings > Add-ons > Add-on Store > Repositories**:

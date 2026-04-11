@@ -10,34 +10,43 @@ inside Home Assistant via **Ingress** -- including Nabu Casa remote access.
 - Paperless-NGX is running on the local network (e.g. via Docker/Portainer)
 - Home Assistant can reach the Paperless instance via HTTP (same host or LAN)
 
+In the examples below, replace these placeholders with your own values:
+- `192.168.1.100` -- IP address of the host running Paperless-NGX
+- `8010` -- Port Paperless-NGX is listening on
+- `your-id` -- Your Nabu Casa cloud ID (only relevant for remote access)
+
 ---
 
-## 1. Configure Paperless
+## 1. Paperless configuration (no changes required)
 
-Add the following environment variables to your Paperless `docker-compose.yml`:
+**Good news:** With v2.0+ of this add-on, **no Paperless-side configuration is required**.
+The proxy spoofs the `Host`, `Origin` and `Referer` headers so Paperless sees the request
+as coming from itself. CSRF and ALLOWED_HOSTS checks pass automatically.
+
+If you previously had these set for an earlier version of this add-on, you can **remove them**:
+
+```yaml
+# These are NO LONGER needed with v2.0+:
+# - PAPERLESS_URL=...
+# - PAPERLESS_CSRF_TRUSTED_ORIGINS=...
+```
+
+### Optional: Auto-login via Remote-User
+
+If you want to skip the Paperless login page entirely (HA's authentication is the access
+control layer anyway), add this to your Paperless `docker-compose.yml`:
 
 ```yaml
 environment:
-  # Internal LAN URL of Paperless
-  - PAPERLESS_URL=http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT
-
-  # Allow requests from HA and Nabu Casa
-  - PAPERLESS_CSRF_TRUSTED_ORIGINS=http://YOUR_HA_IP:8123,https://YOUR_NABU_CASA_ID.ui.nabu.casa
-
-  # (Optional) Enable auto-login through the proxy — no login page needed
   - PAPERLESS_ENABLE_HTTP_REMOTE_USER=true
 ```
-
-Replace the placeholders:
-- `YOUR_PAPERLESS_IP` -- IP address of your Paperless host (e.g. `192.168.1.100`)
-- `YOUR_PAPERLESS_PORT` -- Port Paperless is running on (e.g. `8010`)
-- `YOUR_HA_IP` -- IP address of your Home Assistant instance
-- `YOUR_NABU_CASA_ID` -- Your Nabu Casa cloud ID (only needed for remote access)
 
 Then restart Paperless:
 ```bash
 docker compose down && docker compose up -d
 ```
+
+You will configure the username on the add-on side (see step 3).
 
 ---
 
@@ -65,25 +74,24 @@ In the add-on under **Configuration**:
 | Option | Required | Description |
 |---|---|---|
 | `paperless_url` | Yes | Full URL of your Paperless instance (e.g. `http://192.168.1.100:8010`) |
-| `paperless_user` | No | Paperless username for auto-login (requires `PAPERLESS_ENABLE_HTTP_REMOTE_USER=true` on Paperless side) |
+| `paperless_user` | No | Paperless username for auto-login (skips the login page) |
 
 ### Without auto-login
 
 ```yaml
-paperless_url: "http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT"
+paperless_url: "http://192.168.1.100:8010"
 ```
 
 You will see the Paperless login page inside HA and log in manually.
 
-### With auto-login (recommended)
+### With auto-login (recommended for single-user setups)
 
 ```yaml
-paperless_url: "http://YOUR_PAPERLESS_IP:YOUR_PAPERLESS_PORT"
-paperless_user: "your_paperless_username"
+paperless_url: "http://192.168.1.100:8010"
+paperless_user: "admin"
 ```
 
-Requires `PAPERLESS_ENABLE_HTTP_REMOTE_USER=true` in your Paperless config (see step 1).
-This skips the login page entirely -- HA's own authentication is the access control layer.
+Requires `PAPERLESS_ENABLE_HTTP_REMOTE_USER=true` on Paperless (see step 1).
 
 Then **Start**. A **Paperless** entry appears in the HA sidebar.
 
@@ -92,7 +100,7 @@ Then **Start**. A **Paperless** entry appears in the HA sidebar.
 ## Nabu Casa / Remote Access
 
 Once the add-on runs via Ingress, Paperless is automatically reachable through Nabu Casa --
-no additional port forwarding or VPN needed.
+no additional port forwarding, VPN or firewall rules needed.
 
 ---
 
@@ -104,6 +112,7 @@ View add-on logs:
 
 | Problem | Cause | Solution |
 |---|---|---|
-| Login page shows but redirect fails | Redirect URL rewriting issue | Set `paperless_user` + enable `PAPERLESS_ENABLE_HTTP_REMOTE_USER` to skip login |
-| Static assets (CSS/JS) not loading | Paperless returns absolute URLs | Set `PAPERLESS_URL` correctly in Paperless config |
 | 502 Proxy error | Paperless not reachable | Check `paperless_url` and that Paperless is running |
+| Login succeeds but stays on login page | Browser cookie issue | Clear cookies for the HA domain and try again |
+| CSRF errors on POST | Origin header issue | Open an issue — should not happen with v2.0+ |
+| Auto-login does not work | `PAPERLESS_ENABLE_HTTP_REMOTE_USER` not set on Paperless | See step 1 |
