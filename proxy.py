@@ -116,13 +116,19 @@ e.preventDefault();e.stopPropagation();location.href=a.href;}
 },true);
 })();</script>'''
 
-        # CSS: make Bootstrap modals responsive inside the Ingress iframe.
-        # Smartphone: long titles forced modal width > viewport (cut off).
-        # Tablet: modal-xl capped at 1140px while iframe was much wider.
+        # CSS: make Paperless preview popover and modals responsive inside Ingress.
+        # Paperless's preview-popup uses fixed 30rem width and 32rem max-width.
+        # On smartphones the title overflows, on tablets there's wasted space.
         css = '''<style>
+/* Paperless preview popover (eye icon) */
+.popover.popover-preview{max-width:min(95vw,60rem)!important;}
+.preview-popup-container>*{width:min(90vw,55rem)!important;height:min(75vh,40rem)!important;}
+/* Generic Bootstrap modals (document detail, etc) */
 .modal-title{word-wrap:break-word!important;overflow-wrap:anywhere!important;white-space:normal!important;}
 .modal-dialog{max-width:min(98vw,1600px)!important;}
 @media(max-width:767.98px){
+.popover.popover-preview{max-width:98vw!important;}
+.preview-popup-container>*{width:95vw!important;height:70vh!important;}
 .modal-dialog{max-width:100vw!important;margin:0.25rem!important;}
 .modal-content{max-height:calc(100vh - 0.5rem)!important;}
 }

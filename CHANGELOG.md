@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.3
+
+- Fixed: Document preview was a Paperless popover (`.popover-preview`),
+  not a modal — previous CSS targeted the wrong selectors. Now overrides
+  Paperless's hardcoded `.preview-popup-container > *` (30rem×22rem) and
+  `.popover.popover-preview` (32rem) with viewport-based sizes.
+
 ## 2.1.2
 
 - Fixed: Document preview modal sizing inside Ingress iframe
