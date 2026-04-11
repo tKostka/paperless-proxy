@@ -1,5 +1,5 @@
 name: "Paperless-NGX Proxy"
-version: "2.0.2"
+version: "2.1.0"
 slug: "paperless_proxy"
 description: >-
   Reverse Proxy for Paperless-NGX — exposes a self-hosted Paperless-NGX

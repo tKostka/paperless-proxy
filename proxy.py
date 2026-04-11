@@ -99,6 +99,19 @@ def rewrite_body(body: bytes, content_type: str) -> bytes:
     # Clean up any remaining double-prefix
     text = text.replace(p + p, p)
 
+    # Inject window.open override into HTML so document preview opens
+    # within the iframe instead of an external browser (which loses HA auth).
+    if 'text/html' in content_type and '</head>' in text:
+        script = (
+            '<script>(function(){var o=window.open;'
+            'window.open=function(u,t,f){'
+            'if(u){try{var x=new URL(u,window.location.href);'
+            'if(x.origin===window.location.origin){'
+            'window.location.href=x.href;return null;}}catch(e){}}'
+            'return o.call(window,u,t,f);};})();</script>'
+        )
+        text = text.replace('</head>', script + '</head>', 1)
+
     return text.encode('utf-8')
 
 

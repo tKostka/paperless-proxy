@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.0
+
+- Fixed: Document preview (eye icon) opening external browser → 401
+  Inject `window.open()` override that redirects same-origin URLs into
+  the current iframe instead of opening a new tab/external browser.
+  This was breaking document viewing in the HA Companion App where
+  new windows lose the HA session.
+
 ## 2.0.2
 
 - **No more Paperless-side config**: `PAPERLESS_CSRF_TRUSTED_ORIGINS` and `PAPERLESS_URL` are no longer required because the proxy spoofs Host/Origin/Referer headers
