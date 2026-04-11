@@ -99,16 +99,14 @@ def rewrite_body(body: bytes, content_type: str) -> bytes:
     # Clean up any remaining double-prefix
     text = text.replace(p + p, p)
 
-    # Inject script to keep navigation inside the Ingress iframe.
-    # Without this, document preview (eye icon) opens in an external
-    # browser which has no HA session → 401 Unauthorized.
+    # Inject script + CSS into HTML responses
     if 'text/html' in content_type and '</head>' in text:
+        # Script: keep navigation inside the Ingress iframe so document
+        # preview doesn't open in an external browser (which has no HA session)
         script = '''<script>(function(){
 var sameOrigin=function(u){try{return new URL(u,location.href).origin===location.origin;}catch(e){return false;}};
-// Override window.open for same-origin URLs
 var o=window.open;
 window.open=function(u,t,f){if(u&&sameOrigin(u)){location.href=new URL(u,location.href).href;return null;}return o.call(window,u,t,f);};
-// Intercept clicks on <a target="_blank"> for same-origin links
 document.addEventListener('click',function(e){
 var a=e.target.closest&&e.target.closest('a[target]');
 if(!a)return;
@@ -117,7 +115,23 @@ if((t==='_blank'||t==='_new')&&a.href&&sameOrigin(a.href)){
 e.preventDefault();e.stopPropagation();location.href=a.href;}
 },true);
 })();</script>'''
-        text = text.replace('</head>', script + '</head>', 1)
+
+        # CSS: make Bootstrap modals responsive inside the Ingress iframe.
+        # Smartphone: long titles forced modal width > viewport (cut off).
+        # Tablet: modal-xl capped at 1140px while iframe was much wider.
+        css = '''<style>
+.modal-title{word-wrap:break-word!important;overflow-wrap:anywhere!important;white-space:normal!important;}
+.modal-dialog{max-width:min(98vw,1600px)!important;}
+@media(max-width:767.98px){
+.modal-dialog{max-width:100vw!important;margin:0.25rem!important;}
+.modal-content{max-height:calc(100vh - 0.5rem)!important;}
+}
+@media(min-width:768px){
+.modal-xl,.modal-lg{max-width:min(95vw,1600px)!important;}
+}
+</style>'''
+
+        text = text.replace('</head>', css + script + '</head>', 1)
 
     return text.encode('utf-8')
 

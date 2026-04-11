@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2
+
+- Fixed: Document preview modal sizing inside Ingress iframe
+  - Smartphone: long titles forced modal wider than viewport, cutting off the right side. Now wraps title and caps modal at 100vw.
+  - Tablet/desktop: modal-xl was capped at Bootstrap's 1140px while the iframe was wider. Now uses up to 95vw.
+
 ## 2.1.1
 
 - Fixed: Document preview eye icon — Paperless uses `<a target="_blank">`
