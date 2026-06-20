@@ -12,7 +12,8 @@ Thumbs.db
 # Runtime
 *.log
 
-# Test files
+# Test files (local scaffolding) — but keep the committed regression suite
 test_*.py
 test_*.sh
+!test_proxy.py
 __pycache__/

@@ -1,10 +1,19 @@
 """Paperless-NGX Ingress Proxy.
 
 A lightweight reverse proxy that handles:
-- Redirect rewriting (302 Location headers → relative with Ingress prefix)
+- Redirect rewriting (3xx Location headers → relative with Ingress prefix)
 - HTML/JS/CSS URL rewriting (absolute paths → Ingress-prefixed paths)
-- X-Frame-Options removal (allow iframe embedding in HA)
+- X-Frame-Options / CSP removal (allow iframe embedding in HA)
 - Optional auto-authentication via Remote-User header
+
+Design principles (see doc/remote-access-and-proxy-review.md):
+- Binary/non-text responses (PDF, images, downloads, previews) are streamed
+  through untouched — never fully buffered and never rewritten.
+- Content-Length / Range / 206 semantics are preserved so inline document
+  viewers work over Ingress.
+- Only text/html, text/css and JavaScript are rewritten. JSON (API responses,
+  OCR text, filenames) is passed through verbatim to avoid content corruption.
+- HEAD requests carry no body and keep the upstream Content-Length.
 """
 import os
 import re
@@ -21,19 +30,45 @@ INGRESS_ENTRY = os.environ.get('INGRESS_ENTRY', '').rstrip('/')
 LISTEN_PORT = int(os.environ.get('INGRESS_PORT', '8099'))
 PAPERLESS_USER = os.environ.get('PAPERLESS_USER', '')
 
-# Headers to NOT forward from upstream to client
+_PAPERLESS = urlparse(PAPERLESS_URL)
+
+# Stream upstream → client in chunks of this size for non-rewritable responses,
+# so large PDFs/images are never fully buffered in RAM.
+STREAM_CHUNK = 65536
+
+# Content types whose body we rewrite (inject Ingress prefix + preview CSS/JS).
+# NOTE: application/json is deliberately absent — API payloads (OCR text,
+# filenames, document content) must never be mutated.
+REWRITABLE_TYPES = (
+    'text/html',
+    'text/css',
+    'application/javascript',
+    'text/javascript',
+)
+
+# Headers to NOT forward from upstream to client.
 STRIP_RESPONSE_HEADERS = {
     'x-frame-options',
     'content-security-policy',
-    'content-length',       # recalculated after rewriting
-    'transfer-encoding',    # we send full body, not chunked
-    'connection',
-    'server',               # Python adds its own
-    'date',                 # Python adds its own
+    'content-length',       # set explicitly per response (rewritten vs passthrough)
+    'transfer-encoding',     # hop-by-hop; we send Content-Length or close
+    'connection',            # hop-by-hop; we manage keep-alive/close ourselves
+    'server',                # Python adds its own
+    'date',                  # Python adds its own
 }
 
-# Headers to NOT forward from client to upstream
-STRIP_REQUEST_HEADERS = {'host'}
+# Headers to NOT forward from client to upstream. Host is rewritten; the rest
+# are hop-by-hop and must not be relayed (Content-Length is re-derived by urllib
+# from the body we actually read).
+STRIP_REQUEST_HEADERS = {
+    'host',
+    'connection', 'keep-alive', 'proxy-connection',
+    'transfer-encoding', 'te', 'trailer', 'upgrade',
+    'content-length',
+}
+
+# Case-insensitive "; Path=/" in a Set-Cookie value (group 1 keeps original case).
+_COOKIE_PATH_RE = re.compile(r'(;\s*path=)/', re.IGNORECASE)
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -46,64 +81,69 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(NoRedirectHandler)
 
 
+def _effective_port(scheme: str, port) -> int:
+    if port:
+        return port
+    return 443 if scheme == 'https' else 80
+
+
+def _is_paperless_origin(parsed) -> bool:
+    """True if an absolute/scheme-relative URL points at the Paperless origin.
+
+    A scheme-relative URL (``//host/path``) inherits the upstream scheme so its
+    default port resolves correctly (e.g. 443 for an https upstream).
+    """
+    scheme = parsed.scheme or _PAPERLESS.scheme
+    return (parsed.hostname == _PAPERLESS.hostname
+            and scheme == _PAPERLESS.scheme
+            and (_effective_port(scheme, parsed.port)
+                 == _effective_port(_PAPERLESS.scheme, _PAPERLESS.port)))
+
+
 def rewrite_location(location: str) -> str:
-    """Rewrite a Location header to be a relative path with Ingress prefix."""
+    """Rewrite a Location header to a path with the Ingress prefix.
+
+    - Root-relative (``/accounts/login/?next=/``) → prefix it.
+    - Absolute URL on the Paperless origin → keep path+query+fragment, prefix it.
+    - Absolute URL on any other origin (external redirect) → leave untouched.
+    """
+    if not INGRESS_ENTRY:
+        return location
+
     parsed = urlparse(location)
-    if parsed.scheme:
-        # Absolute URL: http://192.168.1.100:8010/accounts/login/?next=/
-        path = parsed.path
+    if parsed.scheme or parsed.netloc:
+        if not _is_paperless_origin(parsed):
+            return location  # external redirect — do not localise
+        path = parsed.path or '/'
         if parsed.query:
             path += '?' + parsed.query
+        if parsed.fragment:
+            path += '#' + parsed.fragment
         return INGRESS_ENTRY + path
-    # Relative URL: /accounts/login/?next=/
+
     if location.startswith('/'):
+        # Raw string already contains any ?query/#fragment.
         return INGRESS_ENTRY + location
     return location
 
 
-def rewrite_body(body: bytes, content_type: str) -> bytes:
-    """Rewrite absolute paths in response body to include Ingress prefix."""
+def rewrite_cookie(value: str) -> str:
+    """Prefix the cookie Path with the Ingress entry (case-insensitive)."""
     if not INGRESS_ENTRY:
-        return body
-    if not any(ct in content_type for ct in
-               ('text/html', 'text/css', 'application/javascript', 'application/json')):
-        return body
-    try:
-        text = body.decode('utf-8')
-    except UnicodeDecodeError:
-        return body
+        return value
+    value = _COOKIE_PATH_RE.sub(lambda m: m.group(1) + INGRESS_ENTRY + '/', value)
+    # Guard against double-prefixing if upstream already used the Ingress path.
+    value = value.replace(INGRESS_ENTRY + INGRESS_ENTRY, INGRESS_ENTRY)
+    return value
 
-    p = INGRESS_ENTRY
 
-    # HTML attributes: href="/...", src="/...", action="/..."
-    text = text.replace('href="/', f'href="{p}/')
-    text = text.replace("href='/", f"href='{p}/")
-    text = text.replace('src="/', f'src="{p}/')
-    text = text.replace("src='/", f"src='{p}/")
-    text = text.replace('action="/', f'action="{p}/')
-    text = text.replace("action='/", f"action='{p}/")
+def is_rewritable(content_type: str) -> bool:
+    return any(t in content_type for t in REWRITABLE_TYPES)
 
-    # JS/CSS string paths: "/static/...", "/api/...", etc.
-    for path in ('static/', 'api/', 'accounts/', 'documents/',
-                 'dashboard/', 'media/', 'admin/'):
-        text = text.replace(f'"{p}/{path}', f'"__INGRESS_DONE__/{path}')
-        text = text.replace(f"'{p}/{path}", f"'__INGRESS_DONE__/{path}")
 
-    for path in ('static/', 'api/', 'accounts/', 'documents/',
-                 'dashboard/', 'media/', 'admin/'):
-        text = text.replace(f'"/{path}', f'"{p}/{path}')
-        text = text.replace(f"'/{path}", f"'{p}/{path}")
-
-    text = text.replace('__INGRESS_DONE__', p)
-
-    # Clean up any remaining double-prefix
-    text = text.replace(p + p, p)
-
-    # Inject script + CSS into HTML responses
-    if 'text/html' in content_type and '</head>' in text:
-        # Script: keep navigation inside the Ingress iframe so document
-        # preview doesn't open in an external browser (which has no HA session)
-        script = '''<script>(function(){
+# Injected into HTML <head> — keeps document preview/eye-icon inside the Ingress
+# iframe (new windows lose the HA session) and makes the preview popover fit.
+_INJECT_SCRIPT = '''<script>(function(){
 var sameOrigin=function(u){try{return new URL(u,location.href).origin===location.origin;}catch(e){return false;}};
 var o=window.open;
 window.open=function(u,t,f){if(u&&sameOrigin(u)){location.href=new URL(u,location.href).href;return null;}return o.call(window,u,t,f);};
@@ -116,8 +156,7 @@ e.preventDefault();e.stopPropagation();location.href=a.href;}
 },true);
 })();</script>'''
 
-        # CSS: make Paperless preview popover responsive inside Ingress iframe.
-        css = '''<style>
+_INJECT_CSS = '''<style>
 /* Paperless preview popover — base */
 .popover.popover-preview{max-width:min(95vw,70rem)!important;}
 .popover.popover-preview .popover-body{padding:0.25rem!important;overflow:hidden!important;height:auto!important;}
@@ -157,7 +196,52 @@ display:flex!important;flex-direction:column!important;
 }
 </style>'''
 
-        text = text.replace('</head>', css + script + '</head>', 1)
+
+def _rewrite_paths(text: str) -> str:
+    """Prefix root-relative URLs in HTML/CSS/JS with the Ingress entry."""
+    p = INGRESS_ENTRY
+
+    # HTML attributes: href="/...", src="/...", action="/..."
+    # (also rewrites <base href="/"> which the Angular frontend uses as its
+    #  document.baseURI to build every API URL — the primary mechanism).
+    text = text.replace('href="/', f'href="{p}/')
+    text = text.replace("href='/", f"href='{p}/")
+    text = text.replace('src="/', f'src="{p}/')
+    text = text.replace("src='/", f"src='{p}/")
+    text = text.replace('action="/', f'action="{p}/')
+    text = text.replace("action='/", f"action='{p}/")
+
+    # JS/CSS string paths: "/static/...", "/api/...", etc. Two-pass with a
+    # sentinel so an already-prefixed path is not prefixed twice.
+    known = ('static/', 'api/', 'accounts/', 'documents/',
+             'dashboard/', 'media/', 'admin/')
+    for path in known:
+        text = text.replace(f'"{p}/{path}', f'"__INGRESS_DONE__/{path}')
+        text = text.replace(f"'{p}/{path}", f"'__INGRESS_DONE__/{path}")
+    for path in known:
+        text = text.replace(f'"/{path}', f'"{p}/{path}')
+        text = text.replace(f"'/{path}", f"'{p}/{path}")
+    text = text.replace('__INGRESS_DONE__', p)
+
+    # Clean up any remaining double-prefix.
+    text = text.replace(p + p, p)
+    return text
+
+
+def rewrite_body(body: bytes, content_type: str) -> bytes:
+    """Rewrite paths in HTML/CSS/JS and inject preview CSS/JS into HTML."""
+    if not is_rewritable(content_type):
+        return body
+    try:
+        text = body.decode('utf-8')
+    except UnicodeDecodeError:
+        return body  # not text we can safely touch — pass through unchanged
+
+    if INGRESS_ENTRY:
+        text = _rewrite_paths(text)
+
+    if 'text/html' in content_type and '</head>' in text:
+        text = text.replace('</head>', _INJECT_CSS + _INJECT_SCRIPT + '</head>', 1)
 
     return text.encode('utf-8')
 
@@ -185,8 +269,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 headers[key] = value
 
         # Set correct upstream Host and origin headers
-        parsed = urlparse(PAPERLESS_URL)
-        headers['Host'] = parsed.netloc
+        headers['Host'] = _PAPERLESS.netloc
         headers['Origin'] = PAPERLESS_URL
         headers['Referer'] = PAPERLESS_URL + '/'
 
@@ -194,64 +277,127 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if PAPERLESS_USER:
             headers['Remote-User'] = PAPERLESS_USER
 
-        # Don't request compressed content (we need to rewrite it)
+        # Don't request compressed content (we may need to rewrite it)
         headers['Accept-Encoding'] = 'identity'
 
         req = urllib.request.Request(target_url, data=body, headers=headers, method=method)
 
         try:
             resp = _opener.open(req, timeout=300)
-            self._send_response(resp.status, resp.headers, resp.read())
+            self._relay(method, resp.status, resp)
         except urllib.error.HTTPError as e:
-            self._send_response(e.code, e.headers, e.read())
+            # HTTPError is itself a readable response (headers + body).
+            self._relay(method, e.code, e)
         except Exception as e:
-            self.send_response(502)
-            self.send_header('Content-Type', 'text/plain')
-            self.end_headers()
-            msg = f'Proxy error: {e}'
-            self.wfile.write(msg.encode())
-            sys.stdout.write(f'[proxy] ERROR: {msg}\n')
-            sys.stdout.flush()
+            self._send_error(502, f'Proxy error: {e}')
 
-    def _send_response(self, status: int, headers, body: bytes):
-        content_type = ''
-        for key, value in headers.items():
-            if key.lower() == 'content-type':
-                content_type = value
-                break
+    def _relay(self, method: str, status: int, resp):
+        """Relay an upstream response to the client.
 
-        # Rewrite body if applicable (only for non-redirect responses)
-        if status < 300 or status >= 400:
-            body = rewrite_body(body, content_type)
+        Three paths:
+        - Bodyless (HEAD, 1xx, 204, 304): headers only, no body, keep-alive safe.
+        - Rewritable text (HTML/CSS/JS, non-redirect, non-206): buffer, rewrite,
+          send with recomputed Content-Length.
+        - Everything else (PDF, images, JSON, downloads, 206…): stream through.
+        """
+        headers = resp.headers
+        content_type = headers.get('Content-Type', '')
+        is_redirect = 300 <= status < 400
+        rewritable = (not is_redirect and status != 206
+                      and is_rewritable(content_type))
 
+        # Responses that carry no body and are self-framing (RFC 7230 §3.3.3):
+        # any HEAD, plus 1xx / 204 / 304. Keep-alive stays safe without a length,
+        # so these never force a connection close (304s are frequent for cached
+        # static assets — closing on each would churn the remote connection).
+        if method == 'HEAD' or status in (204, 304) or 100 <= status < 200:
+            cl = headers.get('Content-Length')
+            # For a HEAD whose GET body we would rewrite, the upstream length no
+            # longer matches — omit it rather than lie. Otherwise forward what
+            # upstream advertised (informative; no body is sent either way).
+            omit = cl is None or (method == 'HEAD' and rewritable)
+            self._send_headers(status, headers,
+                               content_length=None if omit else int(cl))
+            return
+
+        if rewritable:
+            new_body = rewrite_body(resp.read(), content_type)
+            self._send_headers(status, headers, content_length=len(new_body))
+            self._write(new_body)
+        else:
+            cl = headers.get('Content-Length')
+            if cl is not None:
+                self._send_headers(status, headers, content_length=int(cl))
+                self._stream(resp, expected=int(cl))
+            else:
+                # No length known → delimit the body by closing the connection.
+                self._send_headers(status, headers, close=True)
+                self._stream(resp)
+
+    def _send_headers(self, status: int, headers, *,
+                      content_length=None, close: bool = False):
         self.send_response(status)
-
-        # Forward headers with modifications
-        # Use items() to get ALL header values including duplicate Set-Cookie
         for key, value in headers.items():
             lk = key.lower()
             if lk in STRIP_RESPONSE_HEADERS:
                 continue
-
-            # Rewrite Location header for redirects
             if lk == 'location':
                 value = rewrite_location(value)
-
-            # Rewrite Set-Cookie paths
-            if lk == 'set-cookie' and INGRESS_ENTRY:
-                value = value.replace('Path=/', f'Path={INGRESS_ENTRY}/')
-                # Fix double-prefix in cookie path
-                value = value.replace(
-                    f'Path={INGRESS_ENTRY}{INGRESS_ENTRY}',
-                    f'Path={INGRESS_ENTRY}')
-
+            elif lk == 'set-cookie':
+                value = rewrite_cookie(value)
             self.send_header(key, value)
 
-        # Add iframe-friendly header
+        # iframe-friendly (replaces upstream X-Frame-Options we stripped)
         self.send_header('X-Frame-Options', 'SAMEORIGIN')
-        self.send_header('Content-Length', str(len(body)))
+        if content_length is not None:
+            self.send_header('Content-Length', str(content_length))
+        if close:
+            self.send_header('Connection', 'close')
+            self.close_connection = True
         self.end_headers()
-        self.wfile.write(body)
+
+    def _stream(self, resp, expected=None):
+        """Copy the upstream body to the client in chunks.
+
+        If ``expected`` (the forwarded Content-Length) is given and upstream
+        ends short — or a read fails mid-body — close the connection so a
+        keep-alive client doesn't hang waiting for or desync on missing bytes.
+        """
+        sent = 0
+        while True:
+            try:
+                chunk = resp.read(STREAM_CHUNK)
+            except Exception:
+                self.close_connection = True
+                break
+            if not chunk:
+                break
+            if not self._write(chunk):
+                break
+            sent += len(chunk)
+        if expected is not None and sent < expected:
+            self.close_connection = True
+        return sent
+
+    def _write(self, data: bytes) -> bool:
+        try:
+            self.wfile.write(data)
+            return True
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            return False
+
+    def _send_error(self, status: int, message: str):
+        body = message.encode('utf-8', 'replace')
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Connection', 'close')
+        self.close_connection = True
+        self.end_headers()
+        self._write(body)
+        sys.stdout.write(f'[proxy] ERROR: {message}\n')
+        sys.stdout.flush()
 
     def do_GET(self): self._proxy('GET')
     def do_POST(self): self._proxy('POST')

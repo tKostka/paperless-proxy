@@ -48,6 +48,14 @@ docker compose down && docker compose up -d
 
 You will configure the username on the add-on side (see step 3).
 
+> **Security note:** With `paperless_user` set, *anyone who can reach this add-on
+> through Home Assistant* (including via Nabu Casa remote access) is logged in as
+> that Paperless user with no further prompt. Home Assistant's own authentication
+> becomes the only access-control layer for Paperless. Leave `paperless_user` empty
+> if you'd rather keep the Paperless login as a second gate. This add-on is meant
+> for **occasional personal access** over your existing HA/Nabu Casa session, not
+> as a public reverse proxy for Paperless.
+
 ---
 
 ## 2. Install the Add-on

@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.2.0
+
+Reverse-proxy hardening — fixes recurring document-viewer/preview problems at the
+HTTP layer instead of papering over them with CSS. See
+`doc/remote-access-and-proxy-review.md` for the analysis.
+
+- Fixed: `HEAD` requests no longer write a body and no longer report
+  `Content-Length: 0`. Binary endpoints (PDF / preview / thumbnail / download)
+  now keep the upstream `Content-Length`, which inline PDF viewers probe before
+  loading — a likely root cause of the flaky document preview.
+- Fixed: PDFs, images and downloads are now **streamed** instead of being fully
+  buffered in RAM, and `Range` requests work — `206 Partial Content` with
+  `Content-Range` / `Accept-Ranges` / `ETag` / `Last-Modified` is passed through
+  untouched. Large PDFs and seek-in-viewer now load reliably.
+- Fixed: `application/json` (API responses) is no longer rewritten. OCR text,
+  filenames and document content that happened to contain path-like strings
+  (`/api/`, `/documents/`, `href="/…"`) could be silently corrupted. Navigation
+  still works because the Angular frontend builds every API URL from the
+  (rewritten) `<base href>`, not from JSON fields.
+- Fixed: `206 Partial Content` bodies are never rewritten.
+- Fixed: redirect (`Location`) rewriting only touches the Paperless origin —
+  external redirects are left intact — and now preserves URL fragments (`#…`).
+- Fixed: `502` errors are correctly framed (`Content-Length` + `Connection: close`)
+  so browsers / WebViews don't hang on a failed upstream.
+- Fixed: `Set-Cookie` `Path` rewriting is now case-insensitive.
+- Changed: hop-by-hop request headers (`Connection`, `Transfer-Encoding`, `TE`,
+  `Upgrade`, …) are no longer forwarded upstream.
+- Added: `test_proxy.py` — a dependency-free `unittest` suite (fake upstream +
+  in-process proxy) covering HEAD/GET/Range on PDF, JSON passthrough, redirect
+  rewriting, multiple `Set-Cookie`, no-length streaming and 502 framing.
+- Kept: the preview-popover CSS and the `window.open` / `target="_blank"` capture
+  as a secondary cosmetic layer.
+
 ## 2.1.5
 
 - Fixed: Empty space below the PDF in the preview popover. The canvas
