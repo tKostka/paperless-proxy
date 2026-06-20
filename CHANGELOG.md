@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.3.0
+
+Document preview: readable + zoomable on mobile (Pixel Fold etc.). The eye-icon
+popover rendered the PDF page **fit-to-fit** (`object-fit: contain`), so a
+portrait page in a landscape window shrank to the window height — tiny text and
+big empty side margins — with no way to zoom.
+
+- Changed: the preview popover now **fits the width and scrolls vertically**
+  instead of fitting the whole page. Text renders much larger and the wasted
+  side/top margins are gone. pdf.js renders the canvas at the (now wide)
+  container size, so it stays sharp.
+- Added: **zoom** in the preview — `+` / `-` buttons (top-right of the popover)
+  and double-tap toggle. Scaling is by width so the scroll container pans, and
+  it stays crisp up to the device pixel ratio (~3x on a modern phone) because
+  pdf.js renders the canvas backing store at `devicePixelRatio`.
+- Added: the document preview endpoint (`/api/documents/<id>/preview/`) is now
+  served with `Content-Disposition: inline`, so a setup that marks it as an
+  attachment shows it in the viewer instead of triggering a download.
+- Note: zoom is done on the existing canvas (no native-PDF/iframe routing),
+  which keeps it reliable inside the Home Assistant Ingress iframe and the
+  Companion-app WebView on Android, where embedded native PDF rendering is
+  unreliable.
+
 ## 2.2.0
 
 Reverse-proxy hardening — fixes recurring document-viewer/preview problems at the

@@ -70,6 +70,10 @@ STRIP_REQUEST_HEADERS = {
 # Case-insensitive "; Path=/" in a Set-Cookie value (group 1 keeps original case).
 _COOKIE_PATH_RE = re.compile(r'(;\s*path=)/', re.IGNORECASE)
 
+# The document preview endpoint — its PDF/image must render INLINE in the
+# browser viewer (not download) when opened inside the Ingress iframe.
+_DOCUMENT_INLINE_RE = re.compile(r'/api/documents/\d+/preview/')
+
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Prevent urllib from following redirects — we handle them ourselves."""
@@ -154,34 +158,68 @@ var t=a.getAttribute('target');
 if((t==='_blank'||t==='_new')&&a.href&&sameOrigin(a.href)){
 e.preventDefault();e.stopPropagation();location.href=a.href;}
 },true);
+
+/* Document preview zoom. The popover renders the PDF page to a <canvas>
+   (or <img>) that the base CSS fits to width; here we add +/- buttons and
+   double-tap to scale it by WIDTH so the scroll container pans. It stays
+   crisp up to the device pixel ratio because pdf.js renders the canvas
+   backing store at devicePixelRatio (~3x on a modern phone). */
+var STEPS=[1,1.75,2.5,3.5];
+var imgOf=function(pop){return pop.querySelector('.preview-popup-container canvas,.preview-popup-container img');};
+var apply=function(pop,z){
+var el=imgOf(pop);if(!el)return;
+if(!el._bw){el._bw=el.getBoundingClientRect().width;}
+if(!el._bw){return;}
+el.style.maxWidth='none';el.style.maxHeight='none';el.style.height='auto';
+el.style.width=(z<=1?'100%':(el._bw*z)+'px');
+pop._z=z;};
+var step=function(pop,d){var i=STEPS.indexOf(pop._z||1);if(i<0){i=0;}
+apply(pop,STEPS[Math.min(Math.max(i+d,0),STEPS.length-1)]);};
+var mkBtn=function(txt,cb){var b=document.createElement('button');b.type='button';b.textContent=txt;
+b.style.cssText='width:40px;height:40px;border:0;border-radius:8px;font-size:24px;line-height:38px;padding:0;background:rgba(33,37,41,.72);color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent';
+b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();cb();});return b;};
+var addBar=function(pop){
+if(pop._zbar){return;}pop._zbar=1;pop._z=1;
+var bar=document.createElement('div');
+bar.style.cssText='position:absolute;top:8px;right:8px;z-index:20;display:flex;gap:8px';
+bar.appendChild(mkBtn('-',function(){step(pop,-1);}));
+bar.appendChild(mkBtn('+',function(){step(pop,1);}));
+pop.appendChild(bar);
+var c=pop.querySelector('.preview-popup-container');
+if(c){c.addEventListener('dblclick',function(e){e.preventDefault();apply(pop,(pop._z||1)>1?1:2.5);});}
+};
+var scan=function(n){if(n.nodeType!==1){return;}
+if(n.classList&&n.classList.contains('popover-preview')){addBar(n);}
+else if(n.querySelector){var p=n.querySelector('.popover-preview');if(p){addBar(p);}}};
+new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var ns=muts[i].addedNodes;
+for(var j=0;j<ns.length;j++){scan(ns[j]);}}}).observe(document.documentElement,{childList:true,subtree:true});
 })();</script>'''
 
 _INJECT_CSS = '''<style>
-/* Paperless preview popover — base */
-.popover.popover-preview{max-width:min(95vw,70rem)!important;}
-.popover.popover-preview .popover-body{padding:0.25rem!important;overflow:hidden!important;height:auto!important;}
-.preview-popup-container{max-width:100%!important;overflow:hidden!important;display:flex!important;align-items:center!important;justify-content:center!important;}
-.preview-popup-container>*{width:min(90vw,65rem)!important;height:min(80vh,50rem)!important;max-width:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;}
-/* Inner viewers (PDF canvas, image, iframe) scale to fit container */
+/* Paperless preview popover — fit to WIDTH and scroll (zoom via injected
+   +/- toolbar). The old fit-to-fit (object-fit:contain) shrank a portrait
+   page to the container height, wasting the sides and making text tiny. */
+.popover.popover-preview{max-width:min(96vw,72rem)!important;}
+.popover.popover-preview .popover-body{padding:0!important;overflow:auto!important;max-height:88vh!important;}
+.preview-popup-container{width:100%!important;max-width:100%!important;overflow:auto!important;display:block!important;}
+.preview-popup-container>*{display:block!important;}
 .preview-popup-container canvas,
-.preview-popup-container img,
-.preview-popup-container iframe{max-width:100%!important;max-height:100%!important;width:auto!important;height:auto!important;object-fit:contain!important;}
+.preview-popup-container img{display:block!important;width:100%!important;height:auto!important;max-width:none!important;max-height:none!important;}
+.preview-popup-container iframe{display:block!important;width:100%!important;height:88vh!important;border:0!important;}
 .preview-popup-container pngx-pdf-viewer,
-.preview-popup-container pdf-viewer{display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;height:100%!important;}
+.preview-popup-container pdf-viewer{display:block!important;width:100%!important;height:auto!important;}
 
-/* Mobile: turn popover into a centered fixed overlay using full viewport */
+/* Mobile: full-screen fixed overlay so the document uses the whole display */
 @media(max-width:767.98px){
 .popover.popover-preview{
 position:fixed!important;
-top:0.5rem!important;left:0.5rem!important;right:0.5rem!important;bottom:0.5rem!important;
+top:0.25rem!important;left:0.25rem!important;right:0.25rem!important;bottom:0.25rem!important;
 max-width:none!important;width:auto!important;
 transform:none!important;margin:0!important;
-display:flex!important;flex-direction:column!important;
 }
 .popover.popover-preview>.popover-arrow{display:none!important;}
-.popover.popover-preview .popover-body{flex:1 1 auto!important;min-height:0!important;}
-.preview-popup-container{width:100%!important;height:100%!important;}
-.preview-popup-container>*{width:100%!important;height:100%!important;}
+.popover.popover-preview .popover-body{height:100%!important;max-height:none!important;overflow:auto!important;}
+.preview-popup-container{min-height:100%!important;}
 }
 
 /* Generic Bootstrap modals (document detail dialog, etc) */
@@ -336,17 +374,25 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def _send_headers(self, status: int, headers, *,
                       content_length=None, close: bool = False):
+        # Force the document preview to render inline (some setups send
+        # Content-Disposition: attachment, which would trigger a download
+        # instead of showing the PDF/image in the viewer).
+        force_inline = bool(_DOCUMENT_INLINE_RE.search(self.path))
         self.send_response(status)
         for key, value in headers.items():
             lk = key.lower()
             if lk in STRIP_RESPONSE_HEADERS:
                 continue
+            if force_inline and lk == 'content-disposition':
+                continue  # replaced below with an explicit "inline"
             if lk == 'location':
                 value = rewrite_location(value)
             elif lk == 'set-cookie':
                 value = rewrite_cookie(value)
             self.send_header(key, value)
 
+        if force_inline:
+            self.send_header('Content-Disposition', 'inline')
         # iframe-friendly (replaces upstream X-Frame-Options we stripped)
         self.send_header('X-Frame-Options', 'SAMEORIGIN')
         if content_length is not None:

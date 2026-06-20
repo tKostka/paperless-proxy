@@ -134,6 +134,8 @@ class _Upstream(http.server.BaseHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/pdf')
                 self.send_header('Accept-Ranges', 'bytes')
                 self.send_header('ETag', '"pdf-etag"')
+                # Some setups mark the preview as a download — proxy must force inline.
+                self.send_header('Content-Disposition', 'attachment; filename="orig.pdf"')
                 self.send_header('Content-Length', str(len(PDF)))
                 self.end_headers()
                 self.wfile.write(PDF)
@@ -357,6 +359,13 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(int(header(headers, 'Content-Length')), len(PDF))
         self.assertEqual(header(headers, 'Accept-Ranges'), 'bytes')
         self.assertEqual(header(headers, 'X-Frame-Options'), 'SAMEORIGIN')
+
+    def test_preview_forced_inline(self):
+        # Upstream sends Content-Disposition: attachment; the proxy must replace
+        # it with a single "inline" so the viewer renders it instead of downloading.
+        status, headers, _ = request('GET', '/api/documents/1/preview/')
+        self.assertEqual(status, 200)
+        self.assertEqual(all_headers(headers, 'Content-Disposition'), ['inline'])
 
     def test_pdf_head_keeps_content_length_no_body(self):
         status, headers, body = request('HEAD', '/api/documents/1/preview/')
